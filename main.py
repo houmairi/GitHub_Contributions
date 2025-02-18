@@ -1,125 +1,133 @@
-from github import Github
+#!/usr/bin/env python3
+import git
+from datetime import datetime
+from collections import defaultdict, Counter
+import argparse
 from datetime import datetime, timedelta
-import pandas as pd
-from collections import defaultdict
-import os
-from dotenv import load_dotenv
 
-def analyze_contributions(repo_name, access_token, days_back=90, branch='main'):
-    """
-    Analyze developer contributions in a GitHub repository
+AUTHOR_MAPPINGS = {
+    'ntunjic': 'Niko',
+    'Niko': 'Niko',
+    'Waluigi-dev': 'Waluigi-dev',
+    'if21b503': 'Waluigi-dev'
+}
+
+def analyze_repo(repo_path, start_date=None, end_date=None):
+    """Analyze git repository for developer contributions."""
+    repo = git.Repo(repo_path)
     
-    Parameters:
-    repo_name (str): Repository name in format 'owner/repo'
-    access_token (str): GitHub personal access token
-    days_back (int): Number of days to analyze
-    branch (str): Branch to analyze (default: 'main')
+    # Convert dates to datetime objects if provided
+    start = datetime.strptime(start_date, '%Y-%m-%d') if start_date else None
+    end = datetime.strptime(end_date, '%Y-%m-%d') if end_date else None
     
-    Returns:
-    pd.DataFrame: Contribution statistics per developer
-    """
-    try:
-        g = Github(access_token)
-        repo = g.get_repo(repo_name)
+    # Initialize statistics dictionaries
+    stats = defaultdict(lambda: {
+        'commits': 0,
+        'files_changed': 0,
+        'additions': 0,
+        'deletions': 0,
+        'active_days': set(),
+        'commit_dates': [],
+    })
+    
+    total_commits = 0
+    
+    # Analyze commits
+    for commit in repo.iter_commits():
+        author_name = commit.author.name
+        author_name = AUTHOR_MAPPINGS.get(author_name, author_name)
+        commit_date = datetime.fromtimestamp(commit.committed_date)
         
-        # Calculate date range
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=days_back)
+        # Skip if commit is outside date range
+        if start and commit_date < start:
+            continue
+        if end and commit_date > end:
+            continue
         
-        # Get the specified branch
+        total_commits += 1
+        stats[author_name]['commits'] += 1
+        stats[author_name]['active_days'].add(commit_date.date())
+        stats[author_name]['commit_dates'].append(commit_date)
+        
         try:
-            branch_ref = repo.get_branch(branch)
-            print(f"Analyzing branch: {branch}")
-            print(f"Branch head commit: {branch_ref.commit.sha}")
-        except Exception as e:
-            print(f"Error getting branch {branch}: {str(e)}")
-            print("Available branches:")
-            for b in repo.get_branches():
-                print(f"- {b.name}")
-            return None
-        
-        # Initialize statistics
-        stats = defaultdict(lambda: {
-            'commits': 0,
-            'additions': 0,
-            'deletions': 0,
-            'files_changed': 0,
-            'active_days': set(),
-            'commit_messages': []  # Store commit messages for debugging
-        })
-        
-        # Analyze commits
-        commits = repo.get_commits(sha=branch, since=start_date)
-        total_commits = 0
-        
-        print(f"\nAnalyzing commits from {start_date} to {end_date}")
-        for commit in commits:
-            total_commits += 1
-            if not commit.author:
-                print(f"Warning: No author for commit {commit.sha[:8]}")
-                continue
-                
-            author = commit.author.login
-            stats[author]['commits'] += 1
-            stats[author]['active_days'].add(commit.commit.author.date.date())
-            stats[author]['commit_messages'].append({
-                'date': commit.commit.author.date,
-                'message': commit.commit.message,
-                'sha': commit.sha[:8]
-            })
-            
-            # Get detailed stats if available
-            if commit.stats:
-                stats[author]['additions'] += commit.stats.additions
-                stats[author]['deletions'] += commit.stats.deletions
-                files_count = sum(1 for _ in commit.files)
-                stats[author]['files_changed'] += files_count
-        
-        print(f"\nTotal commits analyzed: {total_commits}")
-        
-        # Convert to DataFrame
-        data = []
-        for author, author_stats in stats.items():
-            data.append({
-                'developer': author,
-                'commits': author_stats['commits'],
-                'additions': author_stats['additions'],
-                'deletions': author_stats['deletions'],
-                'files_changed': author_stats['files_changed'],
-                'active_days': len(author_stats['active_days']),
-                'avg_commits_per_active_day': round(author_stats['commits'] / len(author_stats['active_days']), 2),
-                'code_churn': author_stats['additions'] + author_stats['deletions']
-            })
-            
-            # Print detailed commit history for debugging
-            print(f"\nCommit history for {author}:")
-            for commit in sorted(author_stats['commit_messages'], key=lambda x: x['date']):
-                print(f"- {commit['date'].strftime('%Y-%m-%d %H:%M:%S')} [{commit['sha']}] {commit['message'].split()[0]}")
-        
-        df = pd.DataFrame(data)
-        df = df.sort_values('commits', ascending=False)
-        return df
-        
-    except Exception as e:
-        print(f"Error occurred: {str(e)}")
-        print("If you're getting authentication errors, please check your access token.")
-        print("If you're getting repository errors, please check the repository name format (should be 'owner/repo').")
-        return None
+            for file in commit.stats.files:
+                stats[author_name]['files_changed'] += 1
+                stats[author_name]['additions'] += commit.stats.files[file]['insertions']
+                stats[author_name]['deletions'] += commit.stats.files[file]['deletions']
+        except:
+            continue
 
-# Example usage:
+    # Calculate additional metrics
+    for author in stats:
+        data = stats[author]
+        
+        # Calculate contribution percentages
+        data['commit_percentage'] = (data['commits'] / total_commits) * 100
+        
+        # Calculate impact metrics
+        data['avg_files_per_commit'] = data['files_changed'] / data['commits'] if data['commits'] > 0 else 0
+        data['avg_lines_per_commit'] = (data['additions'] + data['deletions']) / data['commits'] if data['commits'] > 0 else 0
+        data['code_churn'] = data['additions'] + data['deletions']
+        data['impact_ratio'] = (data['additions'] - data['deletions']) / data['code_churn'] if data['code_churn'] > 0 else 0
+        
+        # Calculate velocity metrics
+        active_days = len(data['active_days'])
+        data['active_days_count'] = active_days
+        if active_days > 0:
+            data['commits_per_active_day'] = data['commits'] / active_days
+        
+        # Calculate time patterns
+        hour_distribution = Counter([d.hour for d in data['commit_dates']])
+        data['peak_hour'] = max(hour_distribution.items(), key=lambda x: x[1])[0] if hour_distribution else None
+
+    return stats
+
+def print_stats(stats):
+    """Print formatted statistics."""
+    print("\nDeveloper Contribution Analysis")
+    print("=" * 80)
+    
+    # Sort by number of commits (descending)
+    sorted_authors = sorted(stats.items(), key=lambda x: x[1]['commits'], reverse=True)
+    
+    for author, data in sorted_authors:
+        print(f"\nDeveloper: {author}")
+        print("-" * 50)
+        
+        # Basic stats
+        print(f"Basic Metrics:")
+        print(f"  Total commits:     {data['commits']} ({data['commit_percentage']:.1f}% of all commits)")
+        print(f"  Files changed:     {data['files_changed']}")
+        print(f"  Lines added:       {data['additions']}")
+        print(f"  Lines deleted:     {data['deletions']}")
+        print(f"  Net lines:         {data['additions'] - data['deletions']}")
+        
+        # Impact metrics
+        print(f"\nImpact Metrics:")
+        print(f"  Avg files/commit:  {data['avg_files_per_commit']:.1f}")
+        print(f"  Avg lines/commit:  {data['avg_lines_per_commit']:.1f}")
+        print(f"  Code churn:        {data['code_churn']} lines")
+        print(f"  Impact ratio:      {data['impact_ratio']:.2f}")
+        
+        # Activity metrics
+        print(f"\nActivity Metrics:")
+        print(f"  Active days:       {data['active_days_count']}")
+        print(f"  Commits/active day:{data['commits_per_active_day']:.1f}")
+        print(f"  Peak commit hour:  {data['peak_hour']:02d}:00")
+
+def main():
+    parser = argparse.ArgumentParser(description='Analyze git repository contributions')
+    parser.add_argument('repo_path', help='Path to git repository')
+    parser.add_argument('--start-date', help='Start date (YYYY-MM-DD)')
+    parser.add_argument('--end-date', help='End date (YYYY-MM-DD)')
+    
+    args = parser.parse_args()
+    
+    try:
+        stats = analyze_repo(args.repo_path, args.start_date, args.end_date)
+        print_stats(stats)
+    except Exception as e:
+        print(f"Error analyzing repository: {e}")
+
 if __name__ == "__main__":
-    # Load environment variables
-    load_dotenv()
-    
-    # Get GitHub token from environment variable
-    access_token = os.getenv('GITHUB_ACCESS_TOKEN')
-    if not access_token:
-        raise ValueError("GitHub access token not found in environment variables")
-    
-    # Replace with your repository name
-    REPO_NAME = "houmairi/lms-shop"
-    
-    df = analyze_contributions(REPO_NAME, access_token, branch='main')
-    if df is not None:
-        print("\nContribution Summary:")
-        print(df.to_string(index=False))
+    main()

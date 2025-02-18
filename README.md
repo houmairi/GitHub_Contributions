@@ -1,112 +1,115 @@
-# GitHub Repository Contribution Analyzer
+# Git Repository Contribution Analyzer
 
-A Python tool that analyzes developer contributions in GitHub repositories. This tool provides detailed statistics about commits, code changes, and developer activity over a specified time period.
+A Python script that provides detailed analysis of developer contributions in Git repositories. This tool offers comprehensive insights into coding patterns, impact metrics, and developer activity.
 
 ## Features
 
-- Analyzes commits, additions, deletions, and file changes
-- Tracks developer activity patterns and contributions
-- Calculates code churn and average commits per active day
-- Supports analysis of specific branches
-- Provides detailed commit history for each developer
-- Outputs results in a convenient DataFrame format
+- Detailed contribution analysis per developer
+- Flexible date range filtering
+- Developer identity mapping (combine multiple usernames)
+- Three categories of metrics:
+  1. Basic Metrics
+     - Commit counts and percentages
+     - Files changed
+     - Lines added/deleted
+     - Net line changes
+  2. Impact Metrics
+     - Average files per commit
+     - Average lines per commit
+     - Code churn tracking
+     - Impact ratio (net changes vs. total changes)
+  3. Activity Metrics
+     - Active days count
+     - Commits per active day
+     - Peak activity hours
 
 ## Requirements
 
 - Python 3.x
-- Required Python packages:
-  ```
-  PyGithub
-  pandas
-  python-dotenv
-  ```
+- GitPython package
 
 ## Installation
 
 1. Clone the repository:
    ```bash
    git clone https://github.com/houmairi/GitHub_Contributions
-   cd github-contributions
+   cd GitHub_Contributions
    ```
 
-2. Install required packages:
+2. Install required package:
    ```bash
-   pip install PyGithub pandas python-dotenv
+   pip install gitpython
    ```
-
-3. Create a `.env` file in the project root and add your GitHub access token:
-   ```
-   GITHUB_ACCESS_TOKEN="your_github_token_here"
-   ```
-
-   To create a GitHub access token:
-   1. Go to GitHub Settings > Developer settings > Personal access tokens
-   2. Generate a new token with 'repo' access
-   3. Copy the token and paste it in your `.env` file
 
 ## Usage
 
-1. Configure the repository you want to analyze by modifying the `REPO_NAME` variable in `main.py`:
-   ```python
-   REPO_NAME = "owner/repository"
-   ```
+Basic usage:
+```bash
+python main.py /path/to/repository
+```
 
-2. Run the script:
-   ```bash
-   python main.py
-   ```
-
-The script will output:
-- Branch information
-- Total commits analyzed
-- Detailed commit history per developer
-- Summary statistics in a table format
+Analyze specific date range:
+```bash
+python main.py /path/to/repository --start-date 2024-01-01 --end-date 2024-02-19
+```
 
 ### Example Output
 
 ```
-Analyzing branch: main
-Branch head commit: abc123...
+Developer Contribution Analysis
+==================================================
 
-Total commits analyzed: 150
+Developer: ExampleDev
+------------------------------
+Basic Metrics:
+  Total commits:     310 (73.5% of all commits)
+  Files changed:     1052
+  Lines added:       40001
+  Lines deleted:     17253
+  Net lines:         22748
 
-Commit history for developer1:
-- 2024-01-01 12:00:00 [abc123] Initial commit
-...
+Impact Metrics:
+  Avg files/commit:  3.4
+  Avg lines/commit:  184.7
+  Code churn:        57254 lines
+  Impact ratio:      0.40
 
-Contribution Summary:
-developer  commits  additions  deletions  files_changed  active_days  avg_commits_per_active_day  code_churn
-dev1       50       1000       500        75            20           2.5                         1500
-dev2       30       800        300        45            15           2.0                         1100
+Activity Metrics:
+  Active days:       45
+  Commits/active day: 6.9
+  Peak commit hour:  14:00
 ```
 
 ## Customization
 
-You can modify the analysis parameters when calling the function:
+You can modify the developer identity mappings in the script by editing the `AUTHOR_MAPPINGS` dictionary:
 
 ```python
-analyze_contributions(
-    repo_name,          # Repository name (owner/repo)
-    access_token,       # GitHub access token
-    days_back=90,       # Number of days to analyze (default: 90)
-    branch='main'       # Branch to analyze (default: 'main')
-)
+AUTHOR_MAPPINGS = {
+    'alternate_username': 'main_username',
+    'another_alias': 'main_username'
+}
 ```
 
-## Error Handling
+## Understanding the Metrics
 
-The script includes comprehensive error handling for:
-- Authentication issues
-- Repository access problems
-- Branch validation
-- Missing author information
+### Basic Metrics
+- **Commit percentage**: Shows the developer's share of total project commits
+- **Files changed**: Total number of file modifications
+- **Lines added/deleted**: Raw code changes
+- **Net lines**: Overall code growth (additions - deletions)
 
-## Security Notes
+### Impact Metrics
+- **Average files per commit**: Indicates commit scope/size
+- **Average lines per commit**: Shows typical commit impact
+- **Code churn**: Total lines modified (additions + deletions)
+- **Impact ratio**: Measures net change vs. total modifications (-1 to 1)
 
-- Never commit your `.env` file to version control
-- Keep your GitHub access token secure
-- The `.gitignore` file is configured to exclude sensitive information
+### Activity Metrics
+- **Active days**: Days with at least one commit
+- **Commits per active day**: Activity intensity
+- **Peak commit hour**: Most common commit time
 
 ## Contributing
 
-Feel free to submit issues, fork the repository, and create pull requests for any improvements.
+Feel free to submit issues and enhancement requests!
