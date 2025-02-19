@@ -5,15 +5,26 @@ from collections import defaultdict, Counter
 import argparse
 from datetime import datetime, timedelta
 
+# Author mapping to normalize different usernames to a single identity
+# Format: {'git_username': 'normalized_name'}
+# Example: {'user.name': 'normalized_username', 'user.email': 'normalized_username'}
 AUTHOR_MAPPINGS = {
-    'ntunjic': 'Niko',
-    'Niko': 'Niko',
-    'Waluigi-dev': 'Waluigi-dev',
-    'if21b503': 'Waluigi-dev'
+    # Add mappings here in the format:
+    # 'git_username': 'normalized_username'
 }
 
 def analyze_repo(repo_path, start_date=None, end_date=None):
-    """Analyze git repository for developer contributions."""
+    """
+    Analyze git repository for developer contributions.
+    
+    Args:
+        repo_path (str): Path to the git repository
+        start_date (str, optional): Start date in 'YYYY-MM-DD' format
+        end_date (str, optional): End date in 'YYYY-MM-DD' format
+    
+    Returns:
+        dict: Statistics for each developer's contributions
+    """
     repo = git.Repo(repo_path)
     
     # Convert dates to datetime objects if provided
