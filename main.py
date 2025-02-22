@@ -6,12 +6,58 @@ import argparse
 from datetime import datetime, timedelta
 
 # Author mapping to normalize different usernames to a single identity
-# Format: {'git_username': 'normalized_name'}
-# Example: {'user.name': 'normalized_username', 'user.email': 'normalized_username'}
 AUTHOR_MAPPINGS = {
     # Add mappings here in the format:
     # 'git_username': 'normalized_username'
 }
+
+def calculate_streaks(commit_dates):
+    """
+    Calculate commit streaks from a list of commit dates.
+    
+    Args:
+        commit_dates (list): List of datetime objects representing commit dates
+    
+    Returns:
+        tuple: (longest_streak, current_streak)
+    """
+    if not commit_dates:
+        return 0, 0
+
+    # Convert to dates and sort
+    dates = sorted(set(d.date() for d in commit_dates))
+    if not dates:
+        return 0, 0
+
+    longest_streak = 1
+    current_streak = 1
+    current_count = 1
+    today = datetime.now().date()
+
+    for i in range(1, len(dates)):
+        if (dates[i] - dates[i-1]) == timedelta(days=1):
+            current_count += 1
+        else:
+            longest_streak = max(longest_streak, current_count)
+            current_count = 1
+
+    # Update longest streak one final time
+    longest_streak = max(longest_streak, current_count)
+
+    # Calculate current streak
+    if dates[-1] == today or dates[-1] == today - timedelta(days=1):
+        current_date = dates[-1]
+        current_streak = 1
+        idx = len(dates) - 2
+
+        while idx >= 0 and (current_date - dates[idx]) == timedelta(days=1):
+            current_streak += 1
+            current_date = dates[idx]
+            idx -= 1
+    else:
+        current_streak = 0
+
+    return longest_streak, current_streak
 
 def analyze_repo(repo_path, start_date=None, end_date=None):
     """
@@ -39,6 +85,7 @@ def analyze_repo(repo_path, start_date=None, end_date=None):
         'deletions': 0,
         'active_days': set(),
         'commit_dates': [],
+        'weekday_commits': defaultdict(int),
     })
     
     total_commits = 0
@@ -59,6 +106,7 @@ def analyze_repo(repo_path, start_date=None, end_date=None):
         stats[author_name]['commits'] += 1
         stats[author_name]['active_days'].add(commit_date.date())
         stats[author_name]['commit_dates'].append(commit_date)
+        stats[author_name]['weekday_commits'][commit_date.strftime('%A')] += 1
         
         try:
             for file in commit.stats.files:
@@ -71,6 +119,21 @@ def analyze_repo(repo_path, start_date=None, end_date=None):
     # Calculate additional metrics
     for author in stats:
         data = stats[author]
+        
+        # Calculate streaks
+        longest_streak, current_streak = calculate_streaks(data['commit_dates'])
+        data['longest_streak'] = longest_streak
+        data['current_streak'] = current_streak
+        
+        # Calculate active weeks
+        week_numbers = {d.isocalendar()[1] for d in data['commit_dates']}
+        data['active_weeks'] = len(week_numbers)
+        
+        # Find most active day
+        if data['weekday_commits']:
+            data['most_active_day'] = max(data['weekday_commits'].items(), key=lambda x: x[1])[0]
+        else:
+            data['most_active_day'] = None
         
         # Calculate contribution percentages
         data['commit_percentage'] = (data['commits'] / total_commits) * 100
@@ -112,6 +175,13 @@ def print_stats(stats):
         print(f"  Lines added:       {data['additions']}")
         print(f"  Lines deleted:     {data['deletions']}")
         print(f"  Net lines:         {data['additions'] - data['deletions']}")
+        
+        # Streak and pattern metrics
+        print(f"\nStreak Metrics:")
+        print(f"  Longest streak:    {data['longest_streak']} days")
+        print(f"  Current streak:    {data['current_streak']} days")
+        print(f"  Active weeks:      {data['active_weeks']}")
+        print(f"  Most active day:   {data['most_active_day']}")
         
         # Impact metrics
         print(f"\nImpact Metrics:")
