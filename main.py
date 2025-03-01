@@ -4,15 +4,11 @@ from datetime import datetime
 from collections import defaultdict, Counter
 import argparse
 from datetime import datetime, timedelta
-import re
-from statistics import mean, median, stdev
 
 # Author mapping to normalize different usernames to a single identity
 AUTHOR_MAPPINGS = {
-    'ntunjic': 'Niko',
-    'Niko': 'Niko',
-    'Waluigi-dev': 'Waluigi-dev',
-    'if21b503': 'Waluigi-dev'
+    # Add mappings here in the format:
+    # 'git_username': 'normalized_username'
 }
 
 def calculate_streaks(commit_dates):
@@ -63,56 +59,6 @@ def calculate_streaks(commit_dates):
 
     return longest_streak, current_streak
 
-def get_commit_complexity(commit):
-    """
-    Analyze a commit to determine its complexity and quality.
-    
-    Args:
-        commit: A git commit object
-        
-    Returns:
-        dict: Metrics about the commit's complexity and quality
-    """
-    # Initialize metrics
-    metrics = {
-        'test_changes': 0,
-        'doc_changes': 0,
-        'code_changes': 0,
-        'is_fix': False,
-        'is_refactor': False,
-        'is_feature': False,
-        'file_types': set(),
-        'commit_size': 0
-    }
-    
-    # Check commit message for patterns
-    message = commit.message.lower()
-    if re.search(r'fix|bug|issue|error|crash|problem|fail', message):
-        metrics['is_fix'] = True
-    if re.search(r'refactor|clean|improve|optimize|simplify', message):
-        metrics['is_refactor'] = True
-    if re.search(r'feature|add|new|implement|support', message):
-        metrics['is_feature'] = True
-    
-    # Analyze changed files
-    for file in commit.stats.files:
-        changes = commit.stats.files[file]['insertions'] + commit.stats.files[file]['deletions']
-        metrics['commit_size'] += changes
-        
-        if 'test' in file.lower() or '/tests/' in file.lower():
-            metrics['test_changes'] += changes
-        elif 'doc' in file.lower() or 'readme' in file.lower() or '.md' in file.lower():
-            metrics['doc_changes'] += changes
-        else:
-            metrics['code_changes'] += changes
-        
-        # Track file types
-        if '.' in file:
-            extension = file.split('.')[-1].lower()
-            metrics['file_types'].add(extension)
-    
-    return metrics
-
 def analyze_repo(repo_path, start_date=None, end_date=None):
     """
     Analyze git repository for developer contributions.
@@ -140,15 +86,6 @@ def analyze_repo(repo_path, start_date=None, end_date=None):
         'active_days': set(),
         'commit_dates': [],
         'weekday_commits': defaultdict(int),
-        'tests_added': 0,
-        'docs_added': 0,
-        'fix_commits': 0,
-        'refactor_commits': 0, 
-        'feature_commits': 0,
-        'file_types': set(),
-        'commit_sizes': [],
-        'pr_related_commits': 0,
-        'commit_messages': []
     })
     
     total_commits = 0
@@ -176,37 +113,7 @@ def analyze_repo(repo_path, start_date=None, end_date=None):
                 stats[author_name]['files_changed'] += 1
                 stats[author_name]['additions'] += commit.stats.files[file]['insertions']
                 stats[author_name]['deletions'] += commit.stats.files[file]['deletions']
-                
-                # Track file types
-                if '.' in file:
-                    extension = file.split('.')[-1].lower()
-                    stats[author_name]['file_types'].add(extension)
-                    
-            # Analyze commit complexity and quality
-            complexity = get_commit_complexity(commit)
-            
-            # Store commit message for semantic analysis
-            stats[author_name]['commit_messages'].append(commit.message)
-            
-            # Update quality metrics
-            stats[author_name]['tests_added'] += complexity['test_changes']
-            stats[author_name]['docs_added'] += complexity['doc_changes']
-            stats[author_name]['commit_sizes'].append(complexity['commit_size'])
-            
-            if complexity['is_fix']:
-                stats[author_name]['fix_commits'] += 1
-            if complexity['is_refactor']:
-                stats[author_name]['refactor_commits'] += 1
-            if complexity['is_feature']:
-                stats[author_name]['feature_commits'] += 1
-                
-            # Check if commit is related to a PR
-            if 'pull request' in commit.message.lower() or 'pr #' in commit.message.lower() or 'merge' in commit.message.lower():
-                stats[author_name]['pr_related_commits'] += 1
-                
-        except Exception as e:
-            # Print the specific error for debugging
-            print(f"Error processing commit {commit.hexsha[:8]}: {e}")
+        except:
             continue
 
     # Calculate additional metrics
@@ -236,31 +143,6 @@ def analyze_repo(repo_path, start_date=None, end_date=None):
         data['avg_lines_per_commit'] = (data['additions'] + data['deletions']) / data['commits'] if data['commits'] > 0 else 0
         data['code_churn'] = data['additions'] + data['deletions']
         data['impact_ratio'] = (data['additions'] - data['deletions']) / data['code_churn'] if data['code_churn'] > 0 else 0
-        
-        # Calculate quality metrics
-        data['test_ratio'] = data['tests_added'] / data['additions'] if data['additions'] > 0 else 0
-        data['doc_ratio'] = data['docs_added'] / data['additions'] if data['additions'] > 0 else 0
-        data['fix_ratio'] = data['fix_commits'] / data['commits'] if data['commits'] > 0 else 0
-        data['refactor_ratio'] = data['refactor_commits'] / data['commits'] if data['commits'] > 0 else 0
-        data['feature_ratio'] = data['feature_commits'] / data['commits'] if data['commits'] > 0 else 0
-        data['pr_ratio'] = data['pr_related_commits'] / data['commits'] if data['commits'] > 0 else 0
-        
-        # Calculate commit size statistics
-        if data['commit_sizes']:
-            data['median_commit_size'] = median(data['commit_sizes'])
-            data['mean_commit_size'] = mean(data['commit_sizes'])
-            data['atomic_commits'] = sum(1 for size in data['commit_sizes'] if size <= 50)  # Less than 50 lines is considered atomic
-            data['atomic_commit_ratio'] = data['atomic_commits'] / data['commits'] if data['commits'] > 0 else 0
-            if len(data['commit_sizes']) > 1:
-                data['commit_size_stdev'] = stdev(data['commit_sizes'])
-            else:
-                data['commit_size_stdev'] = 0
-        else:
-            data['median_commit_size'] = 0
-            data['mean_commit_size'] = 0
-            data['commit_size_stdev'] = 0
-            data['atomic_commits'] = 0
-            data['atomic_commit_ratio'] = 0
         
         # Calculate velocity metrics
         active_days = len(data['active_days'])
@@ -307,20 +189,6 @@ def print_stats(stats):
         print(f"  Avg lines/commit:  {data['avg_lines_per_commit']:.1f}")
         print(f"  Code churn:        {data['code_churn']} lines")
         print(f"  Impact ratio:      {data['impact_ratio']:.2f}")
-        
-        # Quality metrics
-        print(f"\nQuality Metrics:")
-        print(f"  Test contribution: {data['test_ratio']*100:.1f}%")
-        print(f"  Doc contribution:  {data['doc_ratio']*100:.1f}%")
-        print(f"  Atomic commits:    {data['atomic_commit_ratio']*100:.1f}%")
-        print(f"  Median commit size:{data['median_commit_size']:.1f} lines")
-        
-        # Commit type distribution
-        print(f"\nCommit Type Distribution:")
-        print(f"  Feature work:      {data['feature_ratio']*100:.1f}%")
-        print(f"  Bug fixes:         {data['fix_ratio']*100:.1f}%")
-        print(f"  Refactoring:       {data['refactor_ratio']*100:.1f}%")
-        print(f"  PR-related:        {data['pr_ratio']*100:.1f}%")
         
         # Activity metrics
         print(f"\nActivity Metrics:")
